@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pinecone-configmap
+data:
+  MODEL_NAME: gpt-4
+  EMBEDDING_MODEL_NAME: text-embedding-3-small
+  PINECONE_INDEX_NAME: main-index
+
+# kubectl create configmap auralisone-agent-configmap --from-env-file=.env
+# kubectl get configmap
+# kubectl get configmap auralisone-agent-configmap -o yaml
+# kubectl delete configmap auralisone-agent-configmap

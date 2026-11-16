@@ -39,6 +39,24 @@ flowchart LR
     I --> C2[OpenAI embeddings] --> D
 ```
 
+## 📸 Screenshots
+
+**Allergen question** — the answer comes from the allergen document and always adds a safety reminder:
+
+![Allergen answer](docs/chat-allergens.png)
+
+**Orders and prices** — precise answers from the custom cake and menu documents:
+
+![Orders and prices](docs/chat-orders-prices.png)
+
+**Question not covered by the documents** — the bot does not guess:
+
+![I don't know answer](docs/chat-dont-know.png)
+
+**LangSmith tracing** — each question is traced as a retrieval step and an LLM step:
+
+![LangSmith traces](docs/langsmith-traces.png)
+
 ## 🛠 Tech Stack
 
 | Area | Tools |
@@ -119,7 +137,7 @@ This project started from a RAG chatbot template from my Agentic AI course. My o
 
 - [x] Knowledge base and RAG chatbot running locally
 - [x] LangSmith tracing
-- [ ] Screenshots of the app and traces
+- [x] Screenshots of the app and traces
 - [ ] Docker image published to Docker Hub
 - [ ] Automated evaluation with DeepEval (Faithfulness, Answer Relevancy, custom G-Eval allergen rule)
 - [ ] Kubernetes deployment

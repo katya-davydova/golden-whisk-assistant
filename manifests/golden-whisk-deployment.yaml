@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: golden-whisk-deployment
+  labels:
+    app: golden-whisk
+spec:
+  replicas: 1                      # Streamlit keeps chat history in memory, so one replica
+  selector:
+    matchLabels:
+      app: golden-whisk
+  template:
+    metadata:
+      labels:
+        app: golden-whisk
+    spec:
+      containers:
+        - name: golden-whisk
+          image: katiedavydova/golden-whisk-assistant:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8501
+          envFrom:
+            - secretRef:
+                name: golden-whisk-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+          readinessProbe:          # ready to receive traffic
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:           # restart the container if it hangs
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 60
+            periodSeconds: 20

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: golden-whisk-config
+  labels:
+    app: golden-whisk
+data:
+  MODEL_NAME: "gpt-4o-mini"
+  EMBEDDING_MODEL_NAME: "text-embedding-3-small"
+  PINECONE_INDEX_NAME: "golden-whisk"
+  LANGSMITH_TRACING: "true"
+  LANGSMITH_ENDPOINT: "https://api.smith.langchain.com"
+  LANGSMITH_PROJECT: "golden-whisk-assistant"

@@ -1,0 +1,40 @@
+// Golden Whisk Assistant — Jenkins BUILD job
+// GitHub (main) -> docker build -> push to Docker Hub with two tags:
+//   :<build number>  (for deploy and rollback)
+//   :latest
+pipeline {
+    agent any
+
+    environment {
+        IMAGE = 'katiedavydova/golden-whisk-assistant'
+    }
+
+    stages {
+        stage('Build image') {
+            steps {
+                bat 'docker build -t %IMAGE%:%BUILD_NUMBER% -t %IMAGE%:latest .'
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                                  usernameVariable: 'DH_USER',
+                                                  passwordVariable: 'DH_TOKEN')]) {
+                    bat 'echo %DH_TOKEN%| docker login -u %DH_USER% --password-stdin'
+                    bat 'docker push %IMAGE%:%BUILD_NUMBER%'
+                    bat 'docker push %IMAGE%:latest'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            bat 'docker logout'
+        }
+        success {
+            echo "Pushed ${env.IMAGE}:${env.BUILD_NUMBER} and ${env.IMAGE}:latest"
+        }
+    }
+}

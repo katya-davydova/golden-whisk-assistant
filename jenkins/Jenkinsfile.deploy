@@ -1,0 +1,46 @@
+// Golden Whisk Assistant — Jenkins DEPLOY job
+// Recreates the Kubernetes secret from Jenkins credentials (no .env file),
+// applies the manifests and rolls out the chosen image tag.
+// The target cluster is defined by the 'kubeconfig' credential:
+//   local Docker Desktop now, Azure AKS later (just replace the credential file).
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest',
+               description: 'Docker image tag to deploy: a build number (e.g. 3) or latest')
+    }
+
+    environment {
+        IMAGE = 'katiedavydova/golden-whisk-assistant'
+    }
+
+    stages {
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([
+                    file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG'),
+                    string(credentialsId: 'openai-api-key', variable: 'OPENAI_API_KEY'),
+                    string(credentialsId: 'pinecone-api-key', variable: 'PINECONE_API_KEY'),
+                    string(credentialsId: 'langsmith-api-key', variable: 'LANGSMITH_API_KEY')
+                ]) {
+                    // 1. Secrets: delete old, create new
+                    bat 'kubectl delete secret golden-whisk-secrets --ignore-not-found'
+                    bat 'kubectl create secret generic golden-whisk-secrets --from-literal=OPENAI_API_KEY=%OPENAI_API_KEY% --from-literal=PINECONE_API_KEY=%PINECONE_API_KEY% --from-literal=LANGSMITH_API_KEY=%LANGSMITH_API_KEY%'
+
+                    // 2. Manifests: ConfigMap (non-secret settings), Deployment, Service
+                    bat 'kubectl apply -f manifests\\golden-whisk-configmap.yaml -f manifests\\golden-whisk-deployment.yaml -f manifests\\golden-whisk-service.yaml'
+
+                    // 3. Roll out the chosen image and wait until it is ready
+                    bat "kubectl set image deployment/golden-whisk-deployment golden-whisk=%IMAGE%:${params.IMAGE_TAG}"
+                    bat 'kubectl rollout restart deployment/golden-whisk-deployment'
+                    bat 'kubectl rollout status deployment/golden-whisk-deployment --timeout=300s'
+
+                    // 4. Show the address of the app
+                    bat 'kubectl get pods -l app=golden-whisk'
+                    bat 'kubectl get service golden-whisk-service'
+                }
+            }
+        }
+    }
+}

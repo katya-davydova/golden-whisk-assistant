@@ -17,11 +17,14 @@ spec:
       containers:
         - name: golden-whisk
           image: katiedavydova/golden-whisk-assistant:1.0
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always          # always pull the newest image from Docker Hub
           ports:
             - containerPort: 8501
           envFrom:
-            - secretRef:
+            - configMapRef:                # non-secret settings
+                name: golden-whisk-config
+            - secretRef:                   # API keys
+
                 name: golden-whisk-secrets
           resources:
             requests:

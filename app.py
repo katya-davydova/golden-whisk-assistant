@@ -231,7 +231,7 @@ for message in st.session_state.messages:
 # ------------------------------------------------------------
 
 question = st.chat_input(
-    "Ask a question about your documents..."
+    "Ask about our menu, prices, orders or allergens..."
 )
 
 

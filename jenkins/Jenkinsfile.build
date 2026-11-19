@@ -21,7 +21,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub',
                                                   usernameVariable: 'DH_USER',
                                                   passwordVariable: 'DH_TOKEN')]) {
-                    bat 'echo %DH_TOKEN%| docker login -u %DH_USER% --password-stdin'
+                    bat 'docker login -u %DH_USER% -p %DH_TOKEN%'
                     bat 'docker push %IMAGE%:%BUILD_NUMBER%'
                     bat 'docker push %IMAGE%:latest'
                 }
@@ -30,9 +30,7 @@ pipeline {
     }
 
     post {
-        always {
-            bat 'docker logout'
-        }
+        
         success {
             echo "Pushed ${env.IMAGE}:${env.BUILD_NUMBER} and ${env.IMAGE}:latest"
         }

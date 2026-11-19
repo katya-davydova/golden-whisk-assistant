@@ -1,9 +1,14 @@
 # 🥐 Golden Whisk Patisserie Assistant
 
+**🔗 Live demo: [golden-whisk-assistant.streamlit.app](https://golden-whisk-assistant.streamlit.app)**
+
 A RAG (Retrieval-Augmented Generation) chatbot for a **fictional** French-style patisserie in Texas.
 Customers can ask about the menu, prices, custom cake orders, allergens, hours, pickup, catering,
 and seasonal pre-orders. The assistant answers **only** from the shop's own documents and says
 "I don't know" when the answer is not there.
+
+The project goes end to end: knowledge base → RAG app → Docker image on Docker Hub →
+Kubernetes deployment → CI/CD with Jenkins (build and deploy pipelines) → online demo.
 
 > **Note:** Golden Whisk Patisserie, its address, staff, menu, prices, and policies are invented
 > for this portfolio project. Any resemblance to a real business is coincidental.
@@ -22,8 +27,12 @@ and seasonal pre-orders. The assistant answers **only** from the shop's own docu
 - **Prompt-injection guard** — retrieved text is treated as untrusted data, not as instructions.
 - **Observability** — every request is traced in **LangSmith** (retrieval step + LLM step, latency, inputs and outputs).
 - **Always answers in English** — designed for US customers.
+- **Containerized and automated** — Docker image, Kubernetes manifests with health probes,
+  and two Jenkins pipelines (build → Docker Hub, deploy → Kubernetes).
 
 ## 🧱 Architecture
+
+### Application (RAG)
 
 ```mermaid
 flowchart LR
@@ -39,7 +48,25 @@ flowchart LR
     I --> C2[OpenAI embeddings] --> D
 ```
 
+### CI/CD and deployment
+
+```mermaid
+flowchart LR
+    A[Code on GitHub<br/>main branch] --> B[Jenkins: Build job]
+    B -->|docker build| C[Docker image]
+    C -->|push :build-number + :latest| D[(Docker Hub<br/>katiedavydova/golden-whisk-assistant)]
+    D --> E[Jenkins: Deploy job]
+    K[Jenkins Credentials<br/>API keys, kubeconfig] --> E
+    E -->|recreate Secret,<br/>apply ConfigMap, Deployment, Service| F[Kubernetes cluster]
+    F --> G[Pod: Streamlit app<br/>health probes]
+    G --> H[Service: LoadBalancer<br/>port 80 → 8501]
+```
+
 ## 📸 Screenshots
+
+**Live demo** — the app deployed on Streamlit Community Cloud:
+
+![Online demo](docs/online-demo.png)
 
 **Allergen question** — the answer comes from the allergen document and always adds a safety reminder:
 
@@ -57,6 +84,18 @@ flowchart LR
 
 ![LangSmith traces](docs/langsmith-traces.png)
 
+**Jenkins** — build and deploy pipelines, both successful:
+
+![Jenkins dashboard](docs/jenkins-dashboard.png)
+
+**Jenkins Build** — image built and pushed to Docker Hub with the build number and `latest` tags:
+
+![Jenkins build](docs/jenkins-build.png)
+
+**Jenkins Deploy** — secret recreated from Jenkins credentials, manifests applied, rollout finished:
+
+![Jenkins deploy](docs/jenkins-deploy.png)
+
 ## 🛠 Tech Stack
 
 | Area | Tools |
@@ -67,7 +106,10 @@ flowchart LR
 | Vector database | Pinecone (serverless, AWS us-east-1, 1536 dims, cosine) |
 | UI | Streamlit |
 | Observability | LangSmith |
-| Containers | Docker, Kubernetes *(in progress)* |
+| Containers | Docker, Docker Hub |
+| Orchestration | Kubernetes (Deployment, Service, ConfigMap, Secret, health probes) |
+| CI/CD | Jenkins (declarative pipelines, credentials) |
+| Hosting | Streamlit Community Cloud (demo), Kubernetes (Docker Desktop) |
 
 ## 📁 Project Structure
 
@@ -75,11 +117,18 @@ flowchart LR
 golden-whisk-assistant/
 ├── app.py                  # Streamlit chat app (retrieval + answer + sources)
 ├── data/                   # 9 knowledge-base documents (Markdown)
+├── docs/                   # screenshots for this README
 ├── ingestion/
 │   ├── create_index.py     # creates the Pinecone index
 │   ├── ingest.py           # loads, chunks, embeds and uploads documents
 │   └── delete-index.py     # deletes the index
-├── manifests/              # Kubernetes deployment and service
+├── jenkins/
+│   ├── Jenkinsfile.build   # GitHub → docker build → push to Docker Hub
+│   └── Jenkinsfile.deploy  # secrets + manifests → kubectl apply → rollout
+├── manifests/
+│   ├── golden-whisk-configmap.yaml   # non-secret settings (model, index, LangSmith project)
+│   ├── golden-whisk-deployment.yaml  # 1 replica, resources, readiness/liveness probes
+│   └── golden-whisk-service.yaml     # LoadBalancer, port 80 → 8501
 ├── Dockerfile
 ├── requirements.txt
 └── .env.example            # template for environment variables (no real keys)
@@ -108,6 +157,37 @@ golden-whisk-assistant/
    ```
    Open http://localhost:8501
 
+## 🐳 Run with Docker
+
+```bash
+docker pull katiedavydova/golden-whisk-assistant:latest
+docker run -d --name golden-whisk -p 8501:8501 --env-file .env katiedavydova/golden-whisk-assistant:latest
+```
+Open http://localhost:8501
+
+## ☸️ Deploy to Kubernetes
+
+```bash
+kubectl create secret generic golden-whisk-secrets --from-env-file=.env
+kubectl apply -f manifests/golden-whisk-configmap.yaml -f manifests/golden-whisk-deployment.yaml -f manifests/golden-whisk-service.yaml
+kubectl get pods -l app=golden-whisk
+```
+Open http://localhost (Docker Desktop) or the external IP of `golden-whisk-service`.
+
+## 🔁 CI/CD with Jenkins
+
+Two pipeline jobs read their Jenkinsfiles from this repository:
+
+| Job | Jenkinsfile | What it does |
+|---|---|---|
+| `golden-whisk-build` | `jenkins/Jenkinsfile.build` | Builds the image, tags it with the build number and `latest`, logs in to Docker Hub with a Jenkins credential and pushes both tags |
+| `golden-whisk-deploy` | `jenkins/Jenkinsfile.deploy` | Deletes and recreates the Kubernetes secret from Jenkins credentials, applies the ConfigMap, Deployment and Service, rolls out the chosen image tag and waits until it is ready |
+
+Jenkins credentials used: `dockerhub` (username + access token), `openai-api-key`, `pinecone-api-key`,
+`langsmith-api-key`, `kubeconfig` (secret file). No API keys are stored in the repository.
+The target cluster is defined only by the `kubeconfig` credential, so the same pipeline can deploy
+to a local cluster or to a cloud cluster.
+
 ## 💬 Example Questions
 
 | Question | Expected behavior |
@@ -130,7 +210,13 @@ This project started from a RAG chatbot template from my Agentic AI course. My o
 - **Bug fix** — fixed the document path in `ingest.py` so the loader finds the `data/` folder.
 - **New Pinecone index** for this project, separate from course data.
 - **LangSmith tracing** to inspect retrieval results and latency for every question.
-- **Security hygiene** — `.gitignore` and `.dockerignore` keep API keys out of Git and Docker images.
+- **Kubernetes manifests** — wrote new manifests with a ConfigMap for settings, a Secret for keys,
+  resource requests/limits and readiness/liveness probes on Streamlit's health endpoint.
+- **Jenkins pipelines** — set up Jenkins, stored all keys as Jenkins credentials, and wrote the
+  build and deploy pipelines; debugged a Docker Hub login failure caused by whitespace in a token.
+- **Security hygiene** — `.gitignore` and `.dockerignore` keep API keys out of Git and Docker images;
+  secrets live only in Jenkins, Kubernetes Secrets and Streamlit Cloud secrets.
+- **Online deployment** on Streamlit Community Cloud.
 - **Manual testing** with expected answers (see the table above).
 
 ## 🗺 Roadmap
@@ -138,8 +224,11 @@ This project started from a RAG chatbot template from my Agentic AI course. My o
 - [x] Knowledge base and RAG chatbot running locally
 - [x] LangSmith tracing
 - [x] Screenshots of the app and traces
-- [ ] Docker image published to Docker Hub
-- [ ] Automated evaluation with DeepEval (Faithfulness, Answer Relevancy, custom G-Eval allergen rule)
-- [ ] Kubernetes deployment
-- [ ] CI/CD with Jenkins
-- [ ] Online demo
+- [x] Docker image published to Docker Hub
+- [x] Kubernetes deployment (ConfigMap, Secret, probes, LoadBalancer)
+- [x] CI/CD with Jenkins (build and deploy pipelines)
+- [x] Online demo (Streamlit Community Cloud)
+- [ ] Cloud infrastructure with Terraform and Azure Kubernetes Service (AKS)
+- [ ] Automated evaluation with DeepEval as a Jenkins quality gate (Faithfulness, Answer Relevancy, custom G-Eval allergen rule)
+- [ ] Code-level guardrail for allergen answers
+- [ ] Agent features: custom cake order requests with staff approval (human-in-the-loop), escalation to staff, MCP tool layer

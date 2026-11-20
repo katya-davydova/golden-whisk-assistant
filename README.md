@@ -8,7 +8,7 @@ and seasonal pre-orders. The assistant answers **only** from the shop's own docu
 "I don't know" when the answer is not there.
 
 The project goes end to end: knowledge base → RAG app → Docker image on Docker Hub →
-Kubernetes deployment → CI/CD with Jenkins (build and deploy pipelines) → online demo.
+Azure Kubernetes Service (AKS) created with Terraform → CI/CD with Jenkins (build and deploy pipelines) → online demo.
 
 > **Note:** Golden Whisk Patisserie, its address, staff, menu, prices, and policies are invented
 > for this portfolio project. Any resemblance to a real business is coincidental.
@@ -29,6 +29,7 @@ Kubernetes deployment → CI/CD with Jenkins (build and deploy pipelines) → on
 - **Always answers in English** — designed for US customers.
 - **Containerized and automated** — Docker image, Kubernetes manifests with health probes,
   and two Jenkins pipelines (build → Docker Hub, deploy → Kubernetes).
+- **Cloud infrastructure as code** — the Azure AKS cluster is created and destroyed with **Terraform**.
 
 ## 🧱 Architecture
 
@@ -57,7 +58,8 @@ flowchart LR
     C -->|push :build-number + :latest| D[(Docker Hub<br/>katiedavydova/golden-whisk-assistant)]
     D --> E[Jenkins: Deploy job]
     K[Jenkins Credentials<br/>API keys, kubeconfig] --> E
-    E -->|recreate Secret,<br/>apply ConfigMap, Deployment, Service| F[Kubernetes cluster]
+    T[Terraform<br/>terraform/main.tf] -->|creates| F
+    E -->|recreate Secret,<br/>apply ConfigMap, Deployment, Service| F[Azure AKS cluster<br/>2 nodes]
     F --> G[Pod: Streamlit app<br/>health probes]
     G --> H[Service: LoadBalancer<br/>port 80 → 8501]
 ```
@@ -96,6 +98,14 @@ flowchart LR
 
 ![Jenkins deploy](docs/jenkins-deploy.png)
 
+**Azure AKS** — the same image deployed by Jenkins to an AKS cluster created with Terraform, answering through a public IP:
+
+![Bot running on Azure AKS](docs/aks-demo.png)
+
+**Jenkins Deploy to AKS** — rollout finished and the LoadBalancer got an external IP:
+
+![Jenkins deploy to AKS](docs/jenkins-deploy-aks.png)
+
 ## 🛠 Tech Stack
 
 | Area | Tools |
@@ -109,7 +119,9 @@ flowchart LR
 | Containers | Docker, Docker Hub |
 | Orchestration | Kubernetes (Deployment, Service, ConfigMap, Secret, health probes) |
 | CI/CD | Jenkins (declarative pipelines, credentials) |
-| Hosting | Streamlit Community Cloud (demo), Kubernetes (Docker Desktop) |
+| Infrastructure as Code | Terraform (azurerm provider) |
+| Cloud | Microsoft Azure: AKS (Free tier, 2 × Standard_D2als_v6), Resource Group, budget alert |
+| Hosting | Streamlit Community Cloud (demo), Azure AKS, Kubernetes on Docker Desktop (local) |
 
 ## 📁 Project Structure
 
@@ -129,6 +141,8 @@ golden-whisk-assistant/
 │   ├── golden-whisk-configmap.yaml   # non-secret settings (model, index, LangSmith project)
 │   ├── golden-whisk-deployment.yaml  # 1 replica, resources, readiness/liveness probes
 │   └── golden-whisk-service.yaml     # LoadBalancer, port 80 → 8501
+├── terraform/
+│   └── main.tf             # Azure Resource Group + AKS cluster with a 2-node pool
 ├── Dockerfile
 ├── requirements.txt
 └── .env.example            # template for environment variables (no real keys)
@@ -174,6 +188,34 @@ kubectl get pods -l app=golden-whisk
 ```
 Open http://localhost (Docker Desktop) or the external IP of `golden-whisk-service`.
 
+## ☁️ Deploy to Azure AKS with Terraform
+
+The cloud cluster is created with Terraform and removed after each demo to keep costs low.
+
+```powershell
+az login
+$env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
+cd terraform
+terraform init
+terraform plan
+terraform apply          # Resource Group + AKS cluster (2 nodes)
+az aks get-credentials -g golden-whisk-rg -n golden-whisk-aks --file $HOME\.kube\aks-config
+kubectl --kubeconfig $HOME\.kube\aks-config get nodes
+```
+
+The AKS kubeconfig is uploaded to Jenkins as the `kubeconfig` secret file credential, then the
+**Build** and **Deploy** jobs ship the app to AKS. The app is reachable at the external IP of
+`golden-whisk-service`.
+
+When the demo is over:
+
+```powershell
+terraform destroy
+```
+
+Cost control: a $5 monthly budget alert on the subscription, Free tier AKS control plane,
+small 2-vCPU nodes, and the cluster exists only while it is needed.
+
 ## 🔁 CI/CD with Jenkins
 
 Two pipeline jobs read their Jenkinsfiles from this repository:
@@ -216,7 +258,10 @@ This project started from a RAG chatbot template from my Agentic AI course. My o
   build and deploy pipelines; debugged a Docker Hub login failure caused by whitespace in a token.
 - **Security hygiene** — `.gitignore` and `.dockerignore` keep API keys out of Git and Docker images;
   secrets live only in Jenkins, Kubernetes Secrets and Streamlit Cloud secrets.
-- **Online deployment** on Streamlit Community Cloud.
+- **Cloud infrastructure** — wrote Terraform for an Azure Resource Group and AKS cluster, worked through
+  VM size and vCPU quota limits on a new subscription, switched Jenkins to the AKS kubeconfig and
+  deployed the app to AKS with the same pipelines; set a budget alert and destroy the cluster after demos.
+- **Online deployment** on Streamlit Community Cloud and Azure AKS.
 - **Manual testing** with expected answers (see the table above).
 
 ## 🗺 Roadmap
@@ -228,7 +273,7 @@ This project started from a RAG chatbot template from my Agentic AI course. My o
 - [x] Kubernetes deployment (ConfigMap, Secret, probes, LoadBalancer)
 - [x] CI/CD with Jenkins (build and deploy pipelines)
 - [x] Online demo (Streamlit Community Cloud)
-- [ ] Cloud infrastructure with Terraform and Azure Kubernetes Service (AKS)
+- [x] Cloud infrastructure with Terraform and Azure Kubernetes Service (AKS)
 - [ ] Automated evaluation with DeepEval as a Jenkins quality gate (Faithfulness, Answer Relevancy, custom G-Eval allergen rule)
 - [ ] Code-level guardrail for allergen answers
 - [ ] Agent features: custom cake order requests with staff approval (human-in-the-loop), escalation to staff, MCP tool layer
